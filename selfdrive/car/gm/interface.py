@@ -16,6 +16,10 @@ NetworkLocation = car.CarParams.NetworkLocation
 BUTTONS_DICT = {CruiseButtons.RES_ACCEL: ButtonType.accelCruise, CruiseButtons.DECEL_SET: ButtonType.decelCruise,
                 CruiseButtons.MAIN: ButtonType.altButton3, CruiseButtons.CANCEL: ButtonType.cancel}
 
+def get_steer_feedforward_sigmoid(desired_angle, v_ego, ANGLE, ANGLE_OFFSET, SIGMOID_SPEED, SIGMOID, SPEED):
+  x = ANGLE * (desired_angle + ANGLE_OFFSET)
+  sigmoid = x / (1 + fabs(x))
+  return (SIGMOID_SPEED * sigmoid * v_ego) + (SIGMOID * sigmoid) + (SPEED * v_ego)
 
 class CarInterface(CarInterfaceBase):
   @staticmethod
@@ -36,11 +40,22 @@ class CarInterface(CarInterfaceBase):
     sigmoid = desired_angle / (1 + fabs(desired_angle))
     return 0.04689655 * sigmoid * (v_ego + 10.028217)
 
+  @staticmethod
+  def get_steer_feedforward_bolt(desired_angle, v_ego):
+    ANGLE = 0.06370624896135679
+    ANGLE_OFFSET = 0.32536345911579184
+    SIGMOID_SPEED = 0.06479105208670367
+    SIGMOID = 0.34485246691603205
+    SPEED = -0.0010645479469461995
+    return get_steer_feedforward_sigmoid(desired_angle, v_ego, ANGLE, ANGLE_OFFSET, SIGMOID_SPEED, SIGMOID, SPEED)
+
   def get_steer_feedforward_function(self):
     if self.CP.carFingerprint == CAR.VOLT:
       return self.get_steer_feedforward_volt
     elif self.CP.carFingerprint == CAR.ACADIA:
       return self.get_steer_feedforward_acadia
+    elif self.CP.carFingerprint in [CAR.BOLT_EV,CAR.BOLT_EV_CC]:
+      return self.get_steer_feedforward_bolt
     else:
       return CarInterfaceBase.get_steer_feedforward_default
 
@@ -197,7 +212,12 @@ class CarInterface(CarInterfaceBase):
       ret.steerRatio = 16.8
       ret.centerToFront = 2.0828 # Measured
       tire_stiffness_factor = 1.0
-      ret.steerActuatorDelay = 0.2
+      ret.steerActuatorDelay = 0.
+      ret.lateralTuning.pid.kpBP, ret.lateralTuning.pid.kiBP = [[10., 41.0], [10., 41.0]]
+      ret.lateralTuning.pid.kpV, ret.lateralTuning.pid.kiV = [[0.14, 0.24], [0.01, 0.021]]
+      ret.lateralTuning.pid.kdBP = [0.]
+      ret.lateralTuning.pid.kdV = [0.5]
+      ret.lateralTuning.pid.kf = 1. # for get_steer_feedforward_bolt()
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
 
       if ret.enableGasInterceptor:

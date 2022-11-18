@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
+import numpy as np
 from cereal import car
 from math import fabs
 from panda import Panda
 
+from common.numpy_fast import interp
+from selfdrive.controls.lib.drive_helpers import apply_deadzone
 from common.conversions import Conversions as CV
 from selfdrive.car import STD_CARGO_KG, create_button_event, scale_rot_inertia, scale_tire_stiffness, gen_empty_fingerprint, get_safety_config
 from selfdrive.car.gm.values import CAR, CC_ONLY_CAR, CruiseButtons, CarControllerParams, EV_CAR, CAMERA_ACC_CAR
-from selfdrive.car.interfaces import CarInterfaceBase
+from selfdrive.car.interfaces import CarInterfaceBase, TorqueFromLateralAccelCallbackType, FRICTION_THRESHOLD
 
 ButtonType = car.CarState.ButtonEvent.Type
 EventName = car.CarEvent.EventName
@@ -16,16 +19,11 @@ NetworkLocation = car.CarParams.NetworkLocation
 BUTTONS_DICT = {CruiseButtons.RES_ACCEL: ButtonType.accelCruise, CruiseButtons.DECEL_SET: ButtonType.decelCruise,
                 CruiseButtons.MAIN: ButtonType.altButton3, CruiseButtons.CANCEL: ButtonType.cancel}
 
-def get_steer_feedforward_sigmoid(desired_angle, v_ego, ANGLE, ANGLE_OFFSET, SIGMOID_SPEED, SIGMOID, SPEED):
-  x = ANGLE * (desired_angle + ANGLE_OFFSET)
-  sigmoid = x / (1 + fabs(x))
-  return (SIGMOID_SPEED * sigmoid * v_ego) + (SIGMOID * sigmoid) + (SPEED * v_ego)
 
 class CarInterface(CarInterfaceBase):
   @staticmethod
   def get_pid_accel_limits(CP, current_speed, cruise_speed):
-    params = CarControllerParams()
-    return params.ACCEL_MIN, params.ACCEL_MAX
+    return CarControllerParams.ACCEL_MIN, CarControllerParams.ACCEL_MAX
 
   # Determined by iteratively plotting and minimizing error for f(angle, speed) = steer.
   @staticmethod
@@ -40,24 +38,36 @@ class CarInterface(CarInterfaceBase):
     sigmoid = desired_angle / (1 + fabs(desired_angle))
     return 0.04689655 * sigmoid * (v_ego + 10.028217)
 
-  @staticmethod
-  def get_steer_feedforward_bolt(desired_angle, v_ego):
-    ANGLE = 0.06370624896135679
-    ANGLE_OFFSET = 0.32536345911579184
-    SIGMOID_SPEED = 0.06479105208670367
-    SIGMOID = 0.34485246691603205
-    SPEED = -0.0010645479469461995
-    return get_steer_feedforward_sigmoid(desired_angle, v_ego, ANGLE, ANGLE_OFFSET, SIGMOID_SPEED, SIGMOID, SPEED)
-
   def get_steer_feedforward_function(self):
     if self.CP.carFingerprint == CAR.VOLT:
       return self.get_steer_feedforward_volt
     elif self.CP.carFingerprint == CAR.ACADIA:
       return self.get_steer_feedforward_acadia
-    elif self.CP.carFingerprint in [CAR.BOLT_EV,CAR.BOLT_EV_CC]:
-      return self.get_steer_feedforward_bolt
     else:
       return CarInterfaceBase.get_steer_feedforward_default
+
+  @staticmethod
+  def torque_from_lateral_accel_gm(lateral_accel_value, torque_params, lateral_accel_error, lateral_accel_deadzone, friction_compensation):
+    # The default is a linear relationship between torque and lateral acceleration (accounting for road roll and steering friction)
+    friction_interp = interp(
+      apply_deadzone(lateral_accel_error, lateral_accel_deadzone),
+      [-FRICTION_THRESHOLD, FRICTION_THRESHOLD],
+      [-torque_params.friction, torque_params.friction]
+    )
+    friction = friction_interp if friction_compensation else 0.0
+
+    steer_torque_pts = np.arange(-1, 1, 0.01)
+    lateral_accel_pts = np.interp(
+      steer_torque_pts,
+      [-1, -0.5, 0.5, 1],
+      [torque_params.latAccelFactor * 2, torque_params.latAccelFactor, torque_params.latAccelFactor, torque_params.latAccelFactor * 2]
+    ) * steer_torque_pts
+
+    lateral_accel_value = np.interp(lateral_accel_value, lateral_accel_pts, steer_torque_pts) + friction
+    return lateral_accel_value
+
+  def torque_from_lateral_accel(self) -> TorqueFromLateralAccelCallbackType:
+    return self.torque_from_lateral_accel_gm
 
   @staticmethod
   def get_params(candidate, fingerprint=gen_empty_fingerprint(), car_fw=None, experimental_long=False):
@@ -215,8 +225,6 @@ class CarInterface(CarInterfaceBase):
       ret.steerActuatorDelay = 0.2
       ret.lateralTuning.pid.kpBP, ret.lateralTuning.pid.kiBP = [[10., 41.0], [10., 41.0]]
       ret.lateralTuning.pid.kpV, ret.lateralTuning.pid.kiV = [[0.14, 0.24], [0.01, 0.021]]
-      # ret.lateralTuning.pid.kdBP = [0.]
-      # ret.lateralTuning.pid.kdV = [0.5]
       ret.lateralTuning.pid.kf = 1. # for get_steer_feedforward_bolt()
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
 

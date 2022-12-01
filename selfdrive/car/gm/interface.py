@@ -8,7 +8,7 @@ from common.numpy_fast import interp
 from selfdrive.controls.lib.drive_helpers import apply_deadzone
 from common.conversions import Conversions as CV
 from selfdrive.car import STD_CARGO_KG, create_button_event, scale_tire_stiffness, get_safety_config
-from selfdrive.car.gm.values import CAR, CruiseButtons, CarControllerParams, EV_CAR, CAMERA_ACC_CAR
+from selfdrive.car.gm.values import CAR, CruiseButtons, CarControllerParams, EV_CAR, CAMERA_ACC_CAR, CC_ONLY_CAR
 from selfdrive.car.interfaces import CarInterfaceBase, TorqueFromLateralAccelCallbackType, FRICTION_THRESHOLD
 
 ButtonType = car.CarState.ButtonEvent.Type
@@ -71,7 +71,7 @@ class CarInterface(CarInterfaceBase):
 
   @staticmethod
   def _get_params(ret, candidate, fingerprint, car_fw, experimental_long):
-    ret = CarInterfaceBase.get_std_params(candidate, fingerprint)
+    ret = CarInterfaceBase.get_std_params(candidate)
     ret.carName = "gm"
     ret.safetyConfigs = [get_safety_config(car.CarParams.SafetyModel.gm)]
     ret.autoResumeSng = False
@@ -103,9 +103,10 @@ class CarInterface(CarInterfaceBase):
       ret.vEgoStopping = 0.25
       ret.vEgoStarting = 0.25
       ret.longitudinalActuatorDelayUpperBound = 0.5
-
+      
       if experimental_long:
-        ret.pcmCruise = False
+        ret.enableGasInterceptor = candidate in CC_ONLY_CAR and 0x201 in fingerprint[0]
+        ret.pcmCruise = not ret.enableGasInterceptor # CC enable if no pedal
         ret.openpilotLongitudinalControl = True
         ret.safetyConfigs[0].safetyParam |= Panda.FLAG_GM_HW_CAM_LONG
 
@@ -221,6 +222,33 @@ class CarInterface(CarInterfaceBase):
       ret.centerToFront = ret.wheelbase * 0.4
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
 
+    elif candidate == CAR.BOLT_EV_CC:
+      ret.minEnableSpeed = -1
+      ret.mass = 1669. + STD_CARGO_KG
+      ret.wheelbase = 2.601
+      ret.steerRatio = 16.8
+      ret.centerToFront = 2.0828 # Measured
+      tire_stiffness_factor = 1.0
+      ret.steerActuatorDelay = 0.2
+      ret.lateralTuning.pid.kpBP, ret.lateralTuning.pid.kiBP = [[10., 41.0], [10., 41.0]]
+      ret.lateralTuning.pid.kpV, ret.lateralTuning.pid.kiV = [[0.14, 0.24], [0.01, 0.021]]
+      ret.lateralTuning.pid.kf = 1.0
+      CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
+
+      if ret.enableGasInterceptor:
+        #Note: Low speed, stop and go not tested. Should be fairly smooth on highway
+        ret.longitudinalTuning.kpV = [0.4, 0.06]
+        ret.longitudinalTuning.kiBP = [0., 35.0]
+        ret.longitudinalTuning.kiV = [0.0, 0.04]
+        ret.longitudinalTuning.kiV = [0.0, 0.04]
+        ret.longitudinalTuning.kf = 0.3
+        ret.stoppingDecelRate = 0.8  # reach stopping target smoothly, brake_travel/s while trying to stop
+        ret.stopAccel = 0. # Required acceleration to keep vehicle stationary
+        ret.vEgoStopping = 0.5  # Speed at which the car goes into stopping state, when car starts requesting stopping accel
+        ret.vEgoStarting = 0.5  # Speed at which the car goes into starting state, when car starts requesting starting accel,
+        # vEgoStarting needs to be > or == vEgoStopping to avoid state transition oscillation
+        ret.stoppingControl = True
+
     # TODO: start from empirically derived lateral slip stiffness for the civic and scale by
     # mass and CG position, so all cars will have approximately similar dyn behaviors
     ret.tireStiffnessFront, ret.tireStiffnessRear = scale_tire_stiffness(ret.mass, ret.wheelbase, ret.centerToFront,
@@ -250,9 +278,9 @@ class CarInterface(CarInterfaceBase):
 
     # Enabling at a standstill with brake is allowed
     # TODO: verify 17 Volt can enable for the first time at a stop and allow for all GMs
-    below_min_enable_speed = ret.vEgo < self.CP.minEnableSpeed or self.CS.moving_backward
-    if below_min_enable_speed and not (ret.standstill and ret.brake >= 20 and
-                                       self.CP.networkLocation == NetworkLocation.fwdCamera):
+    below_min_enable_speed = ret.vEgo < self.CP.minEnableSpeed # or self.CS.moving_backward
+    if below_min_enable_speed:# and not (ret.standstill and ret.brake >= 20 and
+                              #         self.CP.networkLocation == NetworkLocation.fwdCamera):
       events.add(EventName.belowEngageSpeed)
     if ret.cruiseState.standstill:
       events.add(EventName.resumeRequired)

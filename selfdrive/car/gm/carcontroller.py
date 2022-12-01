@@ -1,11 +1,11 @@
 from cereal import car
 from common.conversions import Conversions as CV
-from common.numpy_fast import interp
+from common.numpy_fast import interp, clip
 from common.realtime import DT_CTRL
 from opendbc.can.packer import CANPacker
-from selfdrive.car import apply_std_steer_torque_limits
+from selfdrive.car import apply_std_steer_torque_limits, create_gas_interceptor_command
 from selfdrive.car.gm import gmcan
-from selfdrive.car.gm.values import DBC, CanBus, CarControllerParams, CruiseButtons
+from selfdrive.car.gm.values import DBC, CanBus, CarControllerParams, CruiseButtons, CC_ONLY_CAR
 
 VisualAlert = car.CarControl.HUDControl.VisualAlert
 NetworkLocation = car.CarParams.NetworkLocation
@@ -22,6 +22,7 @@ class CarController:
     self.apply_steer_last = 0
     self.apply_gas = 0
     self.apply_brake = 0
+    self.apply_speed = 0
     self.frame = 0
     self.last_steer_frame = 0
     self.last_button_frame = 0
@@ -83,6 +84,46 @@ class CarController:
           # ASCM sends max regen when not enabled
           self.apply_gas = self.params.INACTIVE_REGEN
           self.apply_brake = 0
+
+        elif self.CP.carFingerprint in CC_ONLY_CAR:
+          if self.CP.enableGasInterceptor:
+            if CS.out.gearShifter == car.CarState.GearShifter.low:
+              # Taken from OPGM
+              zero = 0.15625 # 40/256
+              if actuators.accel > 0.0:
+                # Scales the accel from 0-1 to 0.156-1
+                pedal_gas = clip(((1-zero) * actuators.accel + zero), 0.0, 1.0)
+              else:
+                # if accel is negative, -0.1 -> 0.015625
+                pedal_gas = clip(zero + actuators.accel, 0.0, zero)
+            else:
+              pedal_gas = actuators.accel, 0.0, 1.0
+            
+            # Final Clip
+            pedal_gas = clip(pedal_gas, 0.0, 1.0)
+
+            # Send
+            idx = (self.frame // 4) % 4
+            can_sends.append(create_gas_interceptor_command(self.packer_pt, pedal_gas, idx))
+
+          else:
+            # Redneck CC
+            speedDiff = (actuators.speed - CS.out.cruiseState.speed)*CV.MS_TO_MPH
+            
+            # We will spam the up/down buttons till we reach the desired speed
+            HYSTERISIS_VALUE = 0.4
+            if speedDiff > HYSTERISIS_VALUE:
+              cruiseBtn = CruiseButtons.RES_ACCEL
+            if speedDiff < -HYSTERISIS_VALUE:
+              cruiseBtn = CruiseButtons.DECEL_SET
+            else:
+              cruiseBtn = CruiseButtons.INIT
+            
+            if (cruiseBtn != CruiseButtons.INIT) and ((self.frame - self.last_button_frame) * DT_CTRL > 0.63):
+              self.last_button_frame = self.frame
+              self.apply_speed = actuators.speed * CV.MS_TO_MPH
+              can_sends.append(gmcan.create_buttons(self.packer_pt, CanBus.POWERTRAIN, CS.buttons_counter, cruiseBtn))          
+
         else:
           self.apply_gas = int(round(interp(actuators.accel, self.params.GAS_LOOKUP_BP, self.params.GAS_LOOKUP_V)))
           self.apply_brake = int(round(interp(actuators.accel, self.params.BRAKE_LOOKUP_BP, self.params.BRAKE_LOOKUP_V)))
@@ -161,6 +202,7 @@ class CarController:
     new_actuators.steerOutputCan = self.apply_steer_last
     new_actuators.gas = self.apply_gas
     new_actuators.brake = self.apply_brake
+    new_actuators.speed = self.apply_speed
 
     self.frame += 1
     return new_actuators, can_sends

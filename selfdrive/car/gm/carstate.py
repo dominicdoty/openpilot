@@ -96,8 +96,6 @@ class CarState(CarStateBase):
 
     ret.parkingBrake = pt_cp.vl["VehicleIgnitionAlt"]["ParkBrake"] == 1
     ret.cruiseState.available = pt_cp.vl["ECMEngineStatus"]["CruiseMainOn"] != 0
-    if self.CP.enableGasInterceptor: # Flip CC main logic when pedal is being used for long TODO: switch to cancel cc
-      ret.cruiseState.available = (not ret.cruiseState.available)
     ret.espDisabled = pt_cp.vl["ESPStatus"]["TractionControlOn"] != 1
     
     if self.CP.carFingerprint in CC_ONLY_CAR:

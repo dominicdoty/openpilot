@@ -105,7 +105,7 @@ CAR_INFO: Dict[str, Union[GMCarInfo, List[GMCarInfo]]] = {
     GMCarInfo("Chevrolet Bolt EUV 2022-23", "Premier or Premier Redline Trim without Super Cruise Package", "https://youtu.be/xvwzGMUA210"),
     GMCarInfo("Chevrolet Bolt EV 2022-23", "2LT Trim with Adaptive Cruise Control Package"),
   ],
-  CAR.BOLT_EV_CC: GMCarInfo("CHEVROLET BOLT EV 2017 REDNECK"),
+  CAR.BOLT_EV_CC: GMCarInfo("CHEVROLET BOLT EV 2017"),
   CAR.SILVERADO: [
     GMCarInfo("Chevrolet Silverado 1500 2020-21", "Safety Package II"),
     GMCarInfo("GMC Sierra 1500 2020-21", "Driver Alert Package II", "https://youtu.be/5HbNoBLzRwE"),
@@ -229,7 +229,7 @@ FINGERPRINTS = {
 
 DBC: Dict[str, Dict[str, str]] = defaultdict(lambda: dbc_dict('gm_global_a_powertrain_generated', 'gm_global_a_object', chassis_dbc='gm_global_a_chassis'))
 
-EV_CAR = {CAR.VOLT, CAR.BOLT_EUV}
+EV_CAR = {CAR.VOLT, CAR.BOLT_EUV, CAR.BOLT_EV_CC}
 
 # We're integrated at the camera with VOACC on these cars (instead of ASCM w/ OBD-II harness)
 CAMERA_ACC_CAR = {CAR.BOLT_EUV, CAR.SILVERADO, CAR.EQUINOX, CAR.BOLT_EV_CC}

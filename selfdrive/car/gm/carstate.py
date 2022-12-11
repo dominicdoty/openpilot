@@ -127,23 +127,18 @@ class CarState(CarStateBase):
     signals = []
     checks = []
     if CP.networkLocation == NetworkLocation.fwdCamera:
-      signals += [
-        ("RollingCounter", "ASCMLKASteeringCmd"),
-      ]
-      checks += [
-        ("ASCMLKASteeringCmd", 10),
-      ]
+      signals += [("RollingCounter", "ASCMLKASteeringCmd")]
+      checks += [("ASCMLKASteeringCmd", 10)]
       if CP.carFingerprint not in CC_ONLY_CAR:
         signals += [
-          ("ACCSpeedSetpoint", "ASCMActiveCruiseControlStatus"),
           ("AEBCmdActive", "AEBCmd"),
+          ("ACCSpeedSetpoint", "ASCMActiveCruiseControlStatus"),
           ("ACCCruiseState", "ASCMActiveCruiseControlStatus"),
         ]
         checks += [
           ("AEBCmd", 10),
           ("ASCMActiveCruiseControlStatus", 25),
         ]
-
 
     return CANParser(DBC[CP.carFingerprint]["pt"], signals, checks, CanBus.CAMERA)
 
@@ -202,7 +197,6 @@ class CarState(CarStateBase):
       ("PSCMSteeringAngle", 100),
       ("ECMAcceleratorPos", 80),
     ]
-
 
     if CP.carFingerprint in CC_ONLY_CAR:
       signals.append(("CruiseSetSpeed", "ECMCruiseControl"))

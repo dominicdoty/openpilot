@@ -6,7 +6,7 @@ from opendbc.can.packer import CANPacker
 from selfdrive.car import apply_std_steer_torque_limits, create_gas_interceptor_command
 from selfdrive.car.gm import gmcan
 from selfdrive.car.gm.values import DBC, CanBus, CarControllerParams, CruiseButtons, CC_ONLY_CAR
-
+from system.swaglog import cloudlog
 VisualAlert = car.CarControl.HUDControl.VisualAlert
 NetworkLocation = car.CarParams.NetworkLocation
 LongCtrlState = car.CarControl.Actuators.LongControlState
@@ -85,6 +85,9 @@ class CarController:
           self.apply_brake = 0
 
         elif self.CP.carFingerprint in CC_ONLY_CAR and self.CP.enableGasInterceptor: 
+          self.apply_gas = int(round(interp(actuators.accel, self.params.GAS_LOOKUP_BP, self.params.GAS_LOOKUP_V)))
+          self.apply_brake = int(round(interp(actuators.accel, self.params.BRAKE_LOOKUP_BP, self.params.BRAKE_LOOKUP_V)))
+
           if CS.out.gearShifter == car.CarState.GearShifter.low:
             # Taken from OPGM
             zero = 0.15625 # 40/256
@@ -102,6 +105,8 @@ class CarController:
 
           if not CC.longActive:
             pedal_gas = 0.0 # May not be needed with the enable param
+
+          cloudlog.error(f"Gas intercept: {pedal_gas}")
 
           # Send
           idx = (self.frame // 4) % 4

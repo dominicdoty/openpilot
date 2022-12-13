@@ -573,6 +573,7 @@ class Controls:
     CC.latActive = self.active and not CS.steerFaultTemporary and not CS.steerFaultPermanent and \
                    CS.vEgo > self.CP.minSteerSpeed and not CS.standstill
     CC.longActive = self.enabled and not self.events.any(ET.OVERRIDE_LONGITUDINAL) and self.CP.openpilotLongitudinalControl
+    cloudlog.error(f"enabled:{self.enabled} and not override long:{self.events.any(ET.OVERRIDE_LONGITUDINAL)} and oplongcontrol:{self.CP.openpilotLongitudinalControl}")
 
     actuators = CC.actuators
     actuators.longControlState = self.LoC.long_control_state

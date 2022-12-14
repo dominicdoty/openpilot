@@ -6,6 +6,7 @@ from opendbc.can.packer import CANPacker
 from selfdrive.car import apply_std_steer_torque_limits, create_gas_interceptor_command
 from selfdrive.car.gm import gmcan
 from selfdrive.car.gm.values import DBC, CanBus, CarControllerParams, CruiseButtons, CC_ONLY_CAR
+from system.swaglog import cloudlog
 
 VisualAlert = car.CarControl.HUDControl.VisualAlert
 NetworkLocation = car.CarParams.NetworkLocation
@@ -109,6 +110,7 @@ class CarController:
           # Send
           idx = (self.frame // 4) % 4
           can_sends.append(create_gas_interceptor_command(self.packer_pt, pedal_gas, idx))
+          cloudlog.error(f"sending gas interceptor {pedal_gas}")
 
         else:
           self.apply_gas = int(round(interp(actuators.accel, self.params.GAS_LOOKUP_BP, self.params.GAS_LOOKUP_V)))

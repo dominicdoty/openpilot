@@ -106,7 +106,7 @@ class CarInterface(CarInterfaceBase):
       
       if experimental_long:
         ret.enableGasInterceptor = candidate in CC_ONLY_CAR and 0x201 in fingerprint[0]
-        ret.pcmCruise = not ret.enableGasInterceptor # CC enable if no pedal
+        ret.pcmCruise = False
         ret.openpilotLongitudinalControl = True
         ret.safetyConfigs[0].safetyParam |= Panda.FLAG_GM_HW_CAM_LONG
 

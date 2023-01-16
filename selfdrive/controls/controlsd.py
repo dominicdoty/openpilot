@@ -319,7 +319,6 @@ class Controls:
 
 
       if safety_mismatch or pandaState.safetyRxChecksInvalid or self.mismatch_counter >= 200:
-        cloudlog.error(f"Controls mismatch error: {safety_mismatch} {pandaState.safetyRxChecksInvalid} {self.mismatch_counter >= 200}")
         self.events.add(EventName.controlsMismatch)
 
       if log.PandaState.FaultType.relayMalfunction in pandaState.faults:

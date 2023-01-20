@@ -10,6 +10,7 @@ from common.conversions import Conversions as CV
 from selfdrive.car import STD_CARGO_KG, create_button_event, scale_tire_stiffness, get_safety_config
 from selfdrive.car.gm.values import CAR, CruiseButtons, CarControllerParams, EV_CAR, CAMERA_ACC_CAR, CC_ONLY_CAR
 from selfdrive.car.interfaces import CarInterfaceBase, TorqueFromLateralAccelCallbackType, FRICTION_THRESHOLD
+from system.swaglog import cloudlog
 
 ButtonType = car.CarState.ButtonEvent.Type
 EventName = car.CarEvent.EventName
@@ -264,6 +265,8 @@ class CarInterface(CarInterfaceBase):
       # Handle ACCButtons changing buttons mid-press
       if self.CS.cruise_buttons != CruiseButtons.UNPRESS and self.CS.prev_cruise_buttons != CruiseButtons.UNPRESS:
         buttonEvents.append(create_button_event(CruiseButtons.UNPRESS, self.CS.prev_cruise_buttons, BUTTONS_DICT, CruiseButtons.UNPRESS))
+
+      cloudlog.error(",".join([f"{b.type.name}:{b.pressed}" for b in buttonEvents]))
 
       ret.buttonEvents = buttonEvents
 
